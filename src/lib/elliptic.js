@@ -21,13 +21,31 @@ const curveEd25519 = {
 }
 
 /**
+ * @typedef {object} Curve
+ * @property {string} name The number of the curve.
+ * @property {BN} p The order of the subgroup G with a generator P, where P is a point specified by the curve.
+ * @property {BN} h The cofactor of the subgroup G.
+ * @property {string} M SEC1-compressed coordinate of M.
+ * @property {string} N SEC1-compressed coordinate of N.
+ */
+const curveNistP256 = {
+  name: 'p256',
+  // It is defined in [draft-irtf-cfrg-spake2-08] that
+  M: '02886e2f97ace46e55ba9dd7242579f2993b64e16ef3dcab95afd497333d8fa12f',
+  N: '03d8bbd6c639c62937b04d997f38c3770719c629d7014d49a24b4f98baa1292b49',
+  p: new BN('115792089210356248762697446949407573529996955224135760342422259061068512044369', 10),
+  h: new BN(1)
+}
+
+/**
  * Enumerate the curves.
  *
  * @readonly
  * @enum {Curve}
  */
 const CURVES = {
-  ed25519: curveEd25519
+  ed25519: curveEd25519,
+  p256: curveNistP256
 }
 
 class Elliptic {
