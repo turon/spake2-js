@@ -56,7 +56,8 @@ class SPAKE2 {
       const w = await this._computeW(password, salt)
       return new ClientSPAKE2State({ clientIdentity, serverIdentity, w, x, options, cipherSuite })
     } else {
-      const { w0, w1 } = await this._computeW0W1(clientIdentity, serverIdentity, password, salt)
+      const { w0s, w1s } = await this._computeW0sW1s(password, salt, clientIdentity, serverIdentity)
+      const { w0, w1 } = await this._computeW0W1(w0s, w1s)
       return new ClientSPAKE2PlusState({ clientIdentity, serverIdentity, w0, w1, x, options, cipherSuite })
     }
   }
@@ -81,13 +82,42 @@ class SPAKE2 {
       const w = await this._computeW(password, salt)
       return Buffer.from(w.toArrayLike(Buffer, 32))
     } else {
-      const { w0, w1 } = await this._computeW0W1(clientIdentity, serverIdentity, password, salt)
+      const { w0s, w1s } = await this._computeW0sW1s(password, salt, clientIdentity, serverIdentity)
+      const { w0, w1 } = await this._computeW0W1(w0s, w1s)
+      var result = await this.computeVerifierRaw(w0, w1)
+      result.w0s = w0s
+      result.w1s = w1s
+      return result
+    }
+  }
+
+  async computeVerifierRaw (w0, w1) {
       const L = this.cipherSuite.curve.P.mul(w1)
+      const Lcoded = L.encodeCompressed('hex')
+      const Ldecoded = L.encode('hex')
       return {
         w0: Buffer.from(w0.toArrayLike(Buffer)),
-        L: this.cipherSuite.curve.encodePoint(L)
+        w1: Buffer.from(w1.toArrayLike(Buffer)),
+        Lcoded: Lcoded,
+        L: Ldecoded,
       }
+  }
+
+  async _computeW0sW1s (password, salt, clientIdentity = "", serverIdentity = "") {
+    const { cipherSuite, options } = this
+    const passphrase = Buffer.from(password)
+    if (clientIdentity || serverIdentity) {
+       passphrase = concat(Buffer.from(password), Buffer.from(clientIdentity), Buffer.from(serverIdentity))
     }
+    const verifier = await cipherSuite.mhf(
+      passphrase,
+      Buffer.from(salt),
+      options.mhf
+    )
+    const verifierLength = verifier.length
+    const w0s = Buffer.from(verifier.subarray(0, verifierLength / 2))
+    const w1s = Buffer.from(verifier.subarray(verifierLength / 2))
+    return { w0s, w1s }
   }
 
   async _computeW (password, salt) {
@@ -98,17 +128,9 @@ class SPAKE2 {
     return w
   }
 
-  async _computeW0W1 (clientIdentity, serverIdentity, password, salt) {
+  async _computeW0W1 (w0s, w1s) {
     const { cipherSuite, options } = this
     const { p } = cipherSuite.curve
-    const verifier = await cipherSuite.mhf(
-      concat(Buffer.from(password), Buffer.from(clientIdentity), Buffer.from(serverIdentity)),
-      Buffer.from(salt),
-      options.mhf
-    )
-    const verifierLength = verifier.length
-    const w0s = Buffer.from(verifier.subarray(0, verifierLength / 2))
-    const w1s = Buffer.from(verifier.subarray(verifierLength / 2))
     const w0 = new BN(w0s.toString('hex'), 16).mod(p)
     const w1 = new BN(w1s.toString('hex'), 16).mod(p)
     return { w0, w1 }
