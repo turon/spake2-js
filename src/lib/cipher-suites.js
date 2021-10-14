@@ -1,11 +1,15 @@
+const crypto = require('crypto')
 const { CURVES, Elliptic, Curve } = require('./elliptic.js')
 const hash = require('./hash.js')
 const hmac = require('./hmac.js')
 const kdf = require('./kdf.js')
 const mhf = require('./mhf.js')
 
-function mapToPbkdf(passphrase, salt, info) { 
-  return kdf.hkdfSha256(salt, passphrase, info)
+function pbkdf2Sha256(password, salt, info) {
+  const iterations = 100
+  const keyLen = 80
+  var w0s_w1s = crypto.pbkdf2Sync(password, salt, iterations, keyLen, 'sha256');
+  return w0s_w1s
 }
 
 /**
@@ -22,7 +26,7 @@ function suiteEd25519Sha256HkdfHmacScrypt () {
     hash: hash.sha256,
     kdf: kdf.hkdfSha256,
     mac: hmac.hmacSha256,
-    mhf: mapToPbkdf
+    mhf: pbkdf2Sha256,
   }
 }
 
@@ -40,7 +44,7 @@ function suiteP256Sha256HkdfHmac () {
     hash: hash.sha256,
     kdf: kdf.hkdfSha256,
     mac: hmac.hmacSha256,
-    mhf: mapToPbkdf
+    mhf: pbkdf2Sha256,
   }
 }
 
