@@ -4,6 +4,10 @@ const hmac = require('./hmac.js')
 const kdf = require('./kdf.js')
 const mhf = require('./mhf.js')
 
+function mapToPbkdf(passphrase, salt, info) { 
+  return kdf.hkdfSha256(salt, passphrase, info)
+}
+
 /**
  * @typedef {object} CipherSuite
  * @property {Curve} curve An elliptic curve.
@@ -18,7 +22,7 @@ function suiteEd25519Sha256HkdfHmacScrypt () {
     hash: hash.sha256,
     kdf: kdf.hkdfSha256,
     mac: hmac.hmacSha256,
-    mhf: mhf.scrypt
+    mhf: mapToPbkdf
   }
 }
 
@@ -30,13 +34,13 @@ function suiteEd25519Sha256HkdfHmacScrypt () {
  * @property {Function} mac A message authentication code function.
  * @property {Function} mhf A memory-hard hash function.
  */
-function suiteP256Sha256HkdfHmacScrypt () {
+function suiteP256Sha256HkdfHmac () {
   return {
     curve: new Elliptic(CURVES.p256),
     hash: hash.sha256,
     kdf: kdf.hkdfSha256,
     mac: hmac.hmacSha256,
-    mhf: mhf.scrypt
+    mhf: mapToPbkdf
   }
 }
 
@@ -48,7 +52,7 @@ function suiteP256Sha256HkdfHmacScrypt () {
  */
 const cipherSuites = {
   'ED25519-SHA256-HKDF-HMAC-SCRYPT': suiteEd25519Sha256HkdfHmacScrypt,
-  'P256-SHA256-HKDF-HMAC-SCRYPT': suiteP256Sha256HkdfHmacScrypt
+  'P256-SHA256-HKDF-HMAC': suiteP256Sha256HkdfHmac
 }
 
 exports.cipherSuites = cipherSuites
