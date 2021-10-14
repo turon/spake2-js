@@ -26,7 +26,7 @@ function suiteEd25519Sha256HkdfHmacScrypt () {
     hash: hash.sha256,
     kdf: kdf.hkdfSha256,
     mac: hmac.hmacSha256,
-    mhf: pbkdf2Sha256,
+    mhf: mhf.scrypt,
   }
 }
 

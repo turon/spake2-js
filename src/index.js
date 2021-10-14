@@ -48,23 +48,24 @@ class SPAKE2 {
     this.cipherSuite = cipherSuite
   }
 
-  async startClient (clientIdentity, serverIdentity, password, salt) {
+  async startClient (verifier) {
     const { options, cipherSuite } = this
     const { p } = cipherSuite.curve
+    const { clientIdentity, serverIdentity, w0, w1 } = verifier
+
     const x = randomInteger(new BN('0', 10), p) // uniformly generated in [0, p)
     if (!options.plus) {
-      const w = await this._computeW(password, salt)
-      return new ClientSPAKE2State({ clientIdentity, serverIdentity, w, x, options, cipherSuite })
+      return new ClientSPAKE2State({ clientIdentity, serverIdentity, w0, x, options, cipherSuite })
     } else {
-      const { w0s, w1s } = await this._computeW0sW1s(password, salt, clientIdentity, serverIdentity)
-      const { w0, w1 } = await this._computeW0W1(w0s, w1s)
       return new ClientSPAKE2PlusState({ clientIdentity, serverIdentity, w0, w1, x, options, cipherSuite })
     }
   }
 
-  async startServer (clientIdentity, serverIdentity, verifier) {
+  async startServer (verifier) {
     const { options, cipherSuite } = this
     const { p } = cipherSuite.curve
+    const { clientIdentity, serverIdentity, w0, w1 } = verifier
+
     const y = randomInteger(new BN('0', 10), p) // uniformly generated in [0, p)
     if (!options.plus) {
       const w = new BN(verifier.toString('hex'), 16)
@@ -77,7 +78,7 @@ class SPAKE2 {
     }
   }
 
-  async computeVerifier (password, salt, clientIdentity, serverIdentity) {
+  async computeVerifier (password, salt, clientIdentity = '', serverIdentity = '') {
     if (!this.options.plus) {
       const w = await this._computeW(password, salt)
       return Buffer.from(w.toArrayLike(Buffer, 32))
@@ -85,8 +86,16 @@ class SPAKE2 {
       const { w0s, w1s } = await this._computeW0sW1s(password, salt, clientIdentity, serverIdentity)
       const { w0, w1 } = await this._computeW0W1(w0s, w1s)
       var result = await this.computeVerifierRaw(w0, w1)
-      result.w0s = w0s
-      result.w1s = w1s
+
+      // Append and override raw fields.
+      Object.assign(result, 
+      {
+        w0s: w0s,
+        w1s: w1s,
+        clientIdentity: clientIdentity,
+        serverIdentity: serverIdentity
+      })
+
       return result
     }
   }
@@ -100,6 +109,8 @@ class SPAKE2 {
         w1: Buffer.from(w1.toArrayLike(Buffer)),
         Lcoded: Lcoded,
         L: Ldecoded,
+        clientIdentity: "",
+        serverIdentity: "",
       }
   }
 
@@ -273,7 +284,7 @@ class ClientSPAKE2PlusState {
     if (S.mul(h).isInfinity()) throw new Error('invalid curve point')
     const Z = S.add(N.neg().mul(w0)).mul(x)
     const V = S.add(N.neg().mul(w0)).mul(w1)
-    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0.toArrayLike(Buffer))
+    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0)
     return new ClientSharedSecret({ options, transcript: TT, cipherSuite })
   }
 
@@ -295,9 +306,9 @@ class ClientSPAKE2PlusState {
     const cipherSuite = getCipherSuite(suite)
     return new ClientSPAKE2PlusState({
       options,
-      x: new BN(x, 16),
-      w0: new BN(w0, 16),
-      w1: new BN(w1, 16),
+      x: x,
+      w0: w0,
+      w1: w1,
       clientIdentity,
       serverIdentity,
       cipherSuite
@@ -379,7 +390,7 @@ class ClientSharedSecret {
     this.Ke = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
     this.Ka = hashTranscript.subarray(Math.floor(transcriptLen / 2))
 
-    const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys' + options.kdf.AAD)
+    const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys') // + options.kdf.AAD)
     const kcLen = Kc.length
     this.KcA = Kc.subarray(0, Math.floor(kcLen / 2))
     this.KcB = Kc.subarray(Math.floor(kcLen / 2))
@@ -435,7 +446,7 @@ class ServerSharedSecret {
     this.Ke = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
     this.Ka = hashTranscript.subarray(Math.floor(transcriptLen / 2))
 
-    const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys' + options.kdf.AAD)
+    const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys') // + options.kdf.AAD)
     const kcLen = Kc.length
     this.KcA = Kc.subarray(0, Math.floor(kcLen / 2))
     this.KcB = Kc.subarray(Math.floor(kcLen / 2))
