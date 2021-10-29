@@ -90,14 +90,24 @@ class SPAKE2 {
       // Append and override raw fields.
       Object.assign(result, 
       {
-        w0s: w0s,
-        w1s: w1s,
         clientIdentity: clientIdentity,
         serverIdentity: serverIdentity
       })
 
       return result
     }
+  }
+
+  async computeVerifierFromSecret (w0s, w1s) {
+      const { w0, w1 } = await this._computeW0W1(w0s, w1s)
+      var result = await this.computeVerifierRaw(w0, w1)
+
+      Object.assign(result, 
+      {
+        w0s: w0s,
+        w1s: w1s,
+      })
+      return result
   }
 
   async computeVerifierRaw (w0, w1) {
@@ -346,6 +356,13 @@ class ServerSPAKE2PlusState {
     const Z = T.add(M.neg().mul(w0)).mul(y)
     const V = L.mul(y)
     const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0.toArrayLike(Buffer))
+
+    this.X = T
+    this.Y = S
+    this.V = V
+    this.Z = Z
+    this.TT = TT
+
     return new ServerSharedSecret({ options, transcript: TT, cipherSuite })
   }
 
