@@ -219,29 +219,29 @@ describe('index.js', function () {
           assert.deepStrictEqual(messageB, expectedMessageB)
 
           const { transcript: transcriptB, hashTranscript: hashTranscriptB } = sharedSecretB
-          assert.deepStrictEqual(transcriptB, expectedTranscript)
-          assert.deepStrictEqual(hashTranscriptB, expectedHashTranscript)
+          assert.strictEqual(transcriptB.toString('hex'), expectedTranscript.toString('hex'))
+          assert.strictEqual(hashTranscriptB.toString('hex'), expectedHashTranscript.toString('hex'))
 
           // A verifies the message from B (Y).
           const sharedSecretA = stateA.finish(messageB)
           const confirmationA = sharedSecretA.getConfirmation()
-          assert.deepStrictEqual(confirmationA, expectedConfirmationA)
+          assert.strictEqual(confirmationA.toString('hex'), expectedConfirmationA.toString('hex'))
 
           const { transcript: transcriptA, hashTranscript: hashTranscriptA } = sharedSecretA
-          assert.deepStrictEqual(transcriptA, expectedTranscript)
-          assert.deepStrictEqual(hashTranscriptA, expectedHashTranscript)
+          assert.strictEqual(transcriptA.toString('hex'), expectedTranscript.toString('hex'))
+          assert.strictEqual(hashTranscriptA.toString('hex'), expectedHashTranscript.toString('hex'))
 
           // B verifies the confirmation message (F) from A.
           assert.doesNotThrow(() => sharedSecretB.verify(confirmationA))
           const confirmationB = sharedSecretB.getConfirmation()
-          assert.deepStrictEqual(confirmationB, expectedConfirmationB)
+          assert.strictEqual(confirmationB.toString('hex'), expectedConfirmationB.toString('hex'))
 
           // A verifies the confirmation message (F) from B.
           assert.doesNotThrow(() => sharedSecretA.verify(confirmationB))
 
           // A and B have a common shared secret.
-          assert.deepStrictEqual(sharedSecretA.toBuffer(), sharedSecretB.toBuffer())
-          assert.deepStrictEqual(sharedSecretA.toBuffer(), expectedSharedSecret)
+          assert.strictEqual(sharedSecretA.toBuffer().toString('hex'), sharedSecretB.toBuffer().toString('hex'))
+          assert.strictEqual(sharedSecretA.toBuffer().toString('hex'), expectedSharedSecret.toString('hex'))
         }
       })
     })
