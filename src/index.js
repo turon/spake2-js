@@ -494,8 +494,8 @@ class ServerSharedSecret {
     this.hashTranscript = hashTranscript
 
     const transcriptLen = hashTranscript.length
-    this.Ke = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
-    this.Ka = hashTranscript.subarray(Math.floor(transcriptLen / 2))
+    this.Ka = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
+    this.Ke = hashTranscript.subarray(Math.floor(transcriptLen / 2))
 
     const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys') // + options.kdf.AAD)
     const kcLen = Kc.length
