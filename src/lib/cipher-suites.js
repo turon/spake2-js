@@ -6,8 +6,8 @@ const kdf = require('./kdf.js')
 const mhf = require('./mhf.js')
 
 function pbkdf2Sha256(password, salt, info) {
-  const iterations = 100
   const keyLen = 80
+  const iterations = 100  // TODO: set from options with default
   var w0s_w1s = crypto.pbkdf2Sync(password, salt, iterations, keyLen, 'sha256');
   return w0s_w1s
 }

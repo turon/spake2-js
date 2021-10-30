@@ -7,7 +7,7 @@ const cipherSuitesCache = {}
 
 /**
  * Concatenates the buffers in the format `len(buf[0]) + buf[0] + len(buf[1]) + buf[1] + ...`.
- * Omits the buffers with `len(buf[i]) === 0`.
+ * Buffers with `len(buf[i]) === 0` only write the length 0.
  *
  * @private
  * @param  {...Buffer} bufs The buffers.
@@ -17,7 +17,7 @@ function concat (...bufs) {
   let outBuf = Buffer.from([])
   for (const buf of bufs) {
     const bufLen = new BN(buf.length).toArrayLike(Buffer, 'le', 8)
-    if (buf.length === 0) continue
+
     outBuf = Buffer.concat(
       [outBuf, bufLen, buf],
       outBuf.length + bufLen.length + buf.length
@@ -46,6 +46,10 @@ class SPAKE2 {
   constructor (options, cipherSuite) {
     this.options = options
     this.cipherSuite = cipherSuite
+
+    // override defaults
+    this.options.context = options.context || ""
+    this.options.compressTT = options.compressTT || false
   }
 
   async startClient (verifier) {
@@ -64,7 +68,7 @@ class SPAKE2 {
   async startServer (verifier) {
     const { options, cipherSuite } = this
     const { p } = cipherSuite.curve
-    const { clientIdentity, serverIdentity, w0, w1 } = verifier
+    const { clientIdentity, serverIdentity, w0, w1, context } = verifier
 
     const y = randomInteger(new BN('0', 10), p) // uniformly generated in [0, p)
     if (!options.plus) {
@@ -74,7 +78,7 @@ class SPAKE2 {
       const { curve } = cipherSuite
       const w0 = new BN(verifier.w0.toString('hex'), 16).mod(p)
       const L = curve.decodePoint(verifier.L)
-      return new ServerSPAKE2PlusState({ clientIdentity, serverIdentity, w0, L, y, options, cipherSuite })
+      return new ServerSPAKE2PlusState({ clientIdentity, serverIdentity, w0, L, y, options, cipherSuite, context })
     }
   }
 
@@ -87,11 +91,16 @@ class SPAKE2 {
       const { w0, w1 } = await this._computeW0W1(w0s, w1s)
       var result = await this.computeVerifierRaw(w0, w1)
 
+      var context = this.options.context
+
       // Append and override raw fields.
       Object.assign(result, 
       {
-        clientIdentity: clientIdentity,
-        serverIdentity: serverIdentity
+        context,
+        clientIdentity,
+        serverIdentity,
+        w0s: w0s,
+        w1s: w1s,
       })
 
       return result
@@ -110,17 +119,20 @@ class SPAKE2 {
       return result
   }
 
-  async computeVerifierRaw (w0, w1) {
+  async computeVerifierRaw (w0, w1, clientIdentity='', serverIdentity='') {
       const L = this.cipherSuite.curve.P.mul(w1)
       const Lcoded = L.encodeCompressed('hex')
       const Ldecoded = L.encode('hex')
+
+      var context = this.options.context
       return {
         w0: Buffer.from(w0.toArrayLike(Buffer)),
         w1: Buffer.from(w1.toArrayLike(Buffer)),
         Lcoded: Lcoded,
         L: Ldecoded,
-        clientIdentity: "",
-        serverIdentity: "",
+        context,
+        clientIdentity,
+        serverIdentity,
       }
   }
 
@@ -289,12 +301,12 @@ class ClientSPAKE2PlusState {
     const { options, cipherSuite, clientIdentity, serverIdentity, T, w0, w1, x } = this
     if (!T) throw new Error('getMessage method needs to be called before this method')
     const { curve } = cipherSuite
-    const { h, N } = curve
+    const { h, M, N } = curve
     const S = curve.decodePoint(incomingMessage)
     if (S.mul(h).isInfinity()) throw new Error('invalid curve point')
     const Z = S.add(N.neg().mul(w0)).mul(x)
     const V = S.add(N.neg().mul(w0)).mul(w1)
-    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0)
+    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(M), curve.encodePoint(N), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0)
     return new ClientSharedSecret({ options, transcript: TT, cipherSuite })
   }
 
@@ -327,7 +339,7 @@ class ClientSPAKE2PlusState {
 }
 
 class ServerSPAKE2PlusState {
-  constructor ({ clientIdentity, serverIdentity, w0, L, y, options, cipherSuite }) {
+  constructor ({ clientIdentity, serverIdentity, w0, L, y, options, cipherSuite}) {
     this.options = options
     this.cipherSuite = cipherSuite
     this.clientIdentity = clientIdentity
@@ -350,12 +362,34 @@ class ServerSPAKE2PlusState {
     const { options, cipherSuite, clientIdentity, serverIdentity, S, w0, L, y } = this
     if (!S) throw new Error('getMessage method needs to be called before this method')
     const { curve } = cipherSuite
-    const { h, M } = curve
+    const { h, M, N } = curve
     const T = curve.decodePoint(incomingMessage)
     if (T.mul(h).isInfinity()) throw new Error('invalid curve point')
     const Z = T.add(M.neg().mul(w0)).mul(y)
     const V = L.mul(y)
-    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0.toArrayLike(Buffer))
+    const context = Buffer.from(options.context)
+    const compressTT = options.compressTT
+    var TT
+
+    const A = (clientIdentity) ? Buffer.from(clientIdentity) : Buffer.from("", "hex")
+    const B = (serverIdentity) ? Buffer.from(serverIdentity) : Buffer.from("", "hex")
+
+    if (compressTT) {
+      TT = concat(
+        context, A, B,
+        curve.encodePoint(M), curve.encodePoint(N),
+        curve.encodePoint(T), curve.encodePoint(S),
+        curve.encodePoint(Z), curve.encodePoint(V),
+        w0.toArrayLike(Buffer)
+      )
+    } else {
+      TT = concat(
+        context, A, B,
+        Buffer.from(M.encode()), Buffer.from(N.encode()),
+        Buffer.from(T.encode()), Buffer.from(S.encode()),
+        Buffer.from(Z.encode()), Buffer.from(V.encode()),
+        w0.toArrayLike(Buffer))
+    }
 
     this.X = T
     this.Y = S
