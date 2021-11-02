@@ -371,15 +371,15 @@ class ServerSPAKE2PlusState {
     const compressTT = options.compressTT
     var TT
 
-    const A = (clientIdentity) ? Buffer.from(clientIdentity) : Buffer.from("", "hex")
+    const A = (clientIdentity) ? Buffer.from(clientIdentity) : Buffer.from("", "hex") 
     const B = (serverIdentity) ? Buffer.from(serverIdentity) : Buffer.from("", "hex")
 
     if (compressTT) {
       TT = concat(
-        context, A, B,
-        curve.encodePoint(M), curve.encodePoint(N),
-        curve.encodePoint(T), curve.encodePoint(S),
-        curve.encodePoint(Z), curve.encodePoint(V),
+        context, A, B, 
+        curve.encodePoint(M), curve.encodePoint(N), 
+        curve.encodePoint(T), curve.encodePoint(S), 
+        curve.encodePoint(Z), curve.encodePoint(V), 
         w0.toArrayLike(Buffer)
       )
     } else {
@@ -397,7 +397,7 @@ class ServerSPAKE2PlusState {
     this.Z = Z
     this.TT = TT
 
-    return new ServerSharedSecret({ options, transcript: TT, cipherSuite })
+    return new ServerSharedSecret({ options, transcript:TT, X:T, Y:S, cipherSuite })
   }
 
   save () {
@@ -460,6 +460,13 @@ class ClientSharedSecret {
     }
   }
 
+  verifyHash(incomingKcB) {
+    const { KcB } = this
+    if (KcB.toString('hex') !== incomingKcB.toString('hex')) {
+      throw new Error('invalid confirmation from server')
+    }
+  }
+
   toBuffer () {
     return this.Ke
   }
@@ -485,10 +492,12 @@ class ClientSharedSecret {
 }
 
 class ServerSharedSecret {
-  constructor ({ options, transcript, cipherSuite }) {
+  constructor ({ options, transcript, cipherSuite, X, Y }) {
     this.options = options
     this.cipherSuite = cipherSuite
     this.transcript = transcript
+    this.X = X
+    this.Y = Y
 
     const hashTranscript = cipherSuite.hash(transcript)
     this.hashTranscript = hashTranscript
@@ -509,12 +518,28 @@ class ServerSharedSecret {
     return F
   }
 
+  getConfirmationHash () {
+    const { cipherSuite, transcript, KcB, X } = this
+    const F = cipherSuite.mac(X, KcB)
+    return F
+  }
+
   verify (incomingConfirmation) {
     const { cipherSuite, transcript, KcA } = this
     if (cipherSuite.mac(transcript, KcA).toString('hex') !== incomingConfirmation.toString('hex')) {
       throw new Error('invalid confirmation from client')
     }
   }
+
+  verifyHash(incomingConfirmation) {
+    const { cipherSuite, KcA, Y } = this
+    const { curve } = cipherSuite
+    const confirmation = cipherSuite.mac(Buffer.from(Y.encode()), KcA)
+    if (confirmation.toString('hex') !== incomingConfirmation.toString('hex')) {
+      throw new Error('invalid confirmation from server')
+    }
+  }
+
 
   toBuffer () {
     return this.Ke
