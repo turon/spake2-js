@@ -284,8 +284,8 @@ class ClientSPAKE2PlusState {
     this.clientIdentity = clientIdentity
     this.serverIdentity = serverIdentity
     this.x = x
-    this.w0 = w0
-    this.w1 = w1
+    this.w0 = new BN(w0, 16)
+    this.w1 = new BN(w1, 16)
   }
 
   getMessage () {
@@ -306,7 +306,39 @@ class ClientSPAKE2PlusState {
     if (S.mul(h).isInfinity()) throw new Error('invalid curve point')
     const Z = S.add(N.neg().mul(w0)).mul(x)
     const V = S.add(N.neg().mul(w0)).mul(w1)
-    const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(M), curve.encodePoint(N), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0)
+
+    const context = Buffer.from(options.context)
+    const compressTT = options.compressTT
+    const A = (clientIdentity) ? Buffer.from(clientIdentity) : Buffer.from("", "hex")
+    const B = (serverIdentity) ? Buffer.from(serverIdentity) : Buffer.from("", "hex")
+
+    // Build final Transcript (TT)
+    //const TT = concat(Buffer.from(clientIdentity), Buffer.from(serverIdentity), curve.encodePoint(M), curve.encodePoint(N), curve.encodePoint(T), curve.encodePoint(S), curve.encodePoint(Z), curve.encodePoint(V), w0)
+    var TT
+    if (compressTT) {
+      TT = concat(
+        context, A, B,
+        curve.encodePoint(M), curve.encodePoint(N),
+        curve.encodePoint(T), curve.encodePoint(S),
+        curve.encodePoint(Z), curve.encodePoint(V),
+        w0.toArrayLike(Buffer)
+      )
+    } else {
+      TT = concat(
+        context, A, B,
+        Buffer.from(M.encode()), Buffer.from(N.encode()),
+        Buffer.from(T.encode()), Buffer.from(S.encode()),
+        Buffer.from(Z.encode()), Buffer.from(V.encode()),
+        w0.toArrayLike(Buffer))
+    }
+
+    // Store intermediate values for validation testing
+    this.X = T
+    this.Y = S
+    this.V = V
+    this.Z = Z
+    this.TT = TT
+
     return new ClientSharedSecret({ options, transcript: TT, cipherSuite })
   }
 
@@ -369,17 +401,18 @@ class ServerSPAKE2PlusState {
     const V = L.mul(y)
     const context = Buffer.from(options.context)
     const compressTT = options.compressTT
-    var TT
 
     const A = (clientIdentity) ? Buffer.from(clientIdentity) : Buffer.from("", "hex") 
     const B = (serverIdentity) ? Buffer.from(serverIdentity) : Buffer.from("", "hex")
 
+    // Build final Transcript (TT)
+    var TT
     if (compressTT) {
       TT = concat(
-        context, A, B, 
-        curve.encodePoint(M), curve.encodePoint(N), 
-        curve.encodePoint(T), curve.encodePoint(S), 
-        curve.encodePoint(Z), curve.encodePoint(V), 
+        context, A, B,
+        curve.encodePoint(M), curve.encodePoint(N),
+        curve.encodePoint(T), curve.encodePoint(S),
+        curve.encodePoint(Z), curve.encodePoint(V),
         w0.toArrayLike(Buffer)
       )
     } else {
@@ -391,6 +424,7 @@ class ServerSPAKE2PlusState {
         w0.toArrayLike(Buffer))
     }
 
+    // Store intermediate values for validation testing
     this.X = T
     this.Y = S
     this.V = V
@@ -438,8 +472,8 @@ class ClientSharedSecret {
     this.hashTranscript = hashTranscript
 
     const transcriptLen = hashTranscript.length
-    this.Ke = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
-    this.Ka = hashTranscript.subarray(Math.floor(transcriptLen / 2))
+    this.Ka = hashTranscript.subarray(0, Math.floor(transcriptLen / 2))
+    this.Ke = hashTranscript.subarray(Math.floor(transcriptLen / 2))
 
     const Kc = cipherSuite.kdf('', this.Ka, 'ConfirmationKeys') // + options.kdf.AAD)
     const kcLen = Kc.length
